@@ -1,0 +1,87 @@
+name: Build Flutter APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'
+          channel: 'stable'
+
+      - name: Crear archivos base de Android (Sello Noctis)
+        run: flutter create --org com.noctis . --platforms android
+
+      - name: Personalizar nombre visible de la App
+        run: sed -i 's/android:label="syncra"/android:label="Syncra"/g' android/app/src/main/AndroidManifest.xml || true
+
+      - name: Inyectar Permisos de Internet en Android
+        run: |
+          python3 -c "
+          import os
+          path = 'android/app/src/main/AndroidManifest.xml'
+          if os.path.exists(path):
+              with open(path, 'r', encoding='utf-8') as f:
+                  code = f.read()
+              if 'android.permission.INTERNET' not in code:
+                  nuevo_codigo = code.replace('<application', '<uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />\n    <application')
+                  with open(path, 'w', encoding='utf-8') as f:
+                      f.write(nuevo_codigo)
+                  print('--- Permisos de red inyectados correctamente en el manifiesto ---')
+              else:
+                  print('--- Los permisos ya estaban presentes ---')
+          else:
+              print('--- Error: No se encontró el AndroidManifest.xml ---')
+          "
+
+      - name: Forzar compatibilidad con Android Moderno (API 34) y ML Kit (API 24)
+        run: |
+          sed -i 's/compileSdkVersion.*/compileSdkVersion 34/g' android/app/build.gradle || true
+          sed -i 's/compileSdk.*/compileSdk 34/g' android/app/build.gradle || true
+          sed -i 's/targetSdkVersion.*/targetSdkVersion 34/g' android/app/build.gradle || true
+          sed -i 's/targetSdk.*/targetSdk 34/g' android/app/build.gradle || true
+          sed -i 's/minSdkVersion.*/minSdkVersion 24/g' android/app/build.gradle || true
+          sed -i 's/minSdk.*/minSdk 24/g' android/app/build.gradle || true
+
+      - name: Limpiar e Instalar dependencias
+        run: |
+          flutter clean
+          flutter pub get
+
+      - name: Inyectar el Logo de la App
+        run: dart run flutter_launcher_icons
+
+      - name: Construir el APK base
+        run: flutter build apk --release
+
+      - name: Firmar el APK y Renombrar de forma Nativa
+        run: |
+          echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > release.jks
+          
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -1)
+          
+          $BUILD_TOOLS_DIR/apksigner sign --ks release.jks \
+            --ks-key-alias "${{ secrets.ALIAS }}" \
+            --ks-pass pass:"${{ secrets.KEY_STORE_PASSWORD }}" \
+            --key-pass pass:"${{ secrets.KEY_PASSWORD }}" \
+            --out build/app/outputs/flutter-apk/Syncra.apk \
+            build/app/outputs/flutter-apk/app-release.apk
+            
+          rm release.jks
+
+      - name: Entregar archivo final firmado
+        uses: actions/upload-artifact@v4
+        with:
+          name: Syncra-APK
+          path: build/app/outputs/flutter-apk/Syncra.apk
+          
