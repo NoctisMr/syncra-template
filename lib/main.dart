@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
-
-import 'providers/syncra_provider.dart';
+import 'providrs/syncra_provider.dart';
 import 'translations.dart';
 import 'tabs/presupuesto_tab.dart';
 import 'tabs/conversor_tab.dart';
@@ -179,23 +178,4 @@ class _MainScreenState extends State<MainScreen> {
           physics: const ClampingScrollPhysics(), 
           onPageChanged: (index) { setState(() { _currentIndex = index; }); },
           children: const [ 
-            // Las Tabs ya no necesitan recibir 20 parámetros. Solo se instancian.
-            PresupuestoTab(),
-            ConversorTab(),
-            EnviosTab()
-          ],
-        ),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex, 
-        selectedItemColor: Theme.of(context).colorScheme.primary,
-        onTap: (index) { _pageController.animateToPage(index, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic); },
-        items: [ 
-          BottomNavigationBarItem(icon: const Icon(Icons.account_balance_wallet), label: t('budget')), 
-          BottomNavigationBarItem(icon: const Icon(Icons.currency_exchange), label: t('converter')), 
-          BottomNavigationBarItem(icon: const Icon(Icons.local_shipping), label: t('shipping')) 
-        ],
-      ),
-    );
-  }
-}
+            // Las Tabs ya no necesitan recibir 20 parámetros. Solo se instanc
