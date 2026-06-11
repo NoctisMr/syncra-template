@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
-import 'providrs/syncra_provider.dart';
+
+import 'providers/app_settings_provider.dart';
+import 'providers/budget_provider.dart';
+import 'providers/converter_provider.dart';
+import 'providers/shipping_provider.dart';
 import 'translations.dart';
 import 'tabs/presupuesto_tab.dart';
 import 'tabs/conversor_tab.dart';
@@ -13,10 +17,35 @@ void main() async {
   await Hive.openBox('settingsBox');
   await Hive.openBox('dataBox');
   
-  // Inyectamos el Provider en la raíz de la app
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => SyncraProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AppSettingsProvider()),
+        ChangeNotifierProxyProvider<AppSettingsProvider, BudgetProvider>(
+          create: (_) => BudgetProvider(),
+          update: (_, settings, budget) => budget!..updateDependencies(
+            settings.tasasCambio, 
+            settings.monedaLocal, 
+            settings.monedaRef,
+          ),
+        ),
+        ChangeNotifierProxyProvider<AppSettingsProvider, ConverterProvider>(
+          create: (_) => ConverterProvider(),
+          update: (_, settings, converter) => converter!..updateDependencies(
+            settings.tasasCambio,
+            settings.applySpread,
+            double.tryParse(settings.spreadCtrl.text) ?? 0.0,
+          ),
+        ),
+        ChangeNotifierProxyProvider<AppSettingsProvider, ShippingProvider>(
+          create: (_) => ShippingProvider(),
+          update: (_, settings, shipping) => shipping!..updateDependencies(
+            settings.tasasCambio,
+            settings.applySpread,
+            double.tryParse(settings.spreadCtrl.text) ?? 0.0,
+          ),
+        ),
+      ],
       child: const SyncraApp(),
     ),
   );
@@ -27,8 +56,8 @@ class SyncraApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Escuchamos los cambios del Provider
-    final provider = context.watch<SyncraProvider>();
+    // Escuchamos únicamente los cambios estructurales de configuración
+    final provider = context.watch<AppSettingsProvider>();
 
     if (provider.isLoading) {
       return const MaterialApp(
@@ -82,15 +111,14 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _abrirAjustes() {
-    final provider = context.read<SyncraProvider>();
+    final provider = context.read<AppSettingsProvider>();
     String t(String key) => i18n[provider.language]?[key] ?? key;
 
     showModalBottomSheet(
       isScrollControlled: true,
       context: context,
       builder: (context) {
-        // Usamos Consumer para que el BottomSheet se actualice si cambian los ajustes
-        return Consumer<SyncraProvider>(
+        return Consumer<AppSettingsProvider>(
           builder: (context, currentProvider, child) {
             return Container(
               padding: const EdgeInsets.all(24),
@@ -156,7 +184,7 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final provider = context.watch<SyncraProvider>();
+    final provider = context.watch<AppSettingsProvider>();
     String t(String key) => i18n[provider.language]?[key] ?? key;
 
     return Scaffold(
@@ -178,4 +206,22 @@ class _MainScreenState extends State<MainScreen> {
           physics: const ClampingScrollPhysics(), 
           onPageChanged: (index) { setState(() { _currentIndex = index; }); },
           children: const [ 
-            // Las Tabs ya no necesitan recibir 20 parámetros. Solo se instanc
+            PresupuestoTab(),
+            ConversorTab(),
+            EnviosTab()
+          ],
+        ),
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex, 
+        selectedItemColor: Theme.of(context).colorScheme.primary,
+        onTap: (index) { _pageController.animateToPage(index, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic); },
+        items: [ 
+          BottomNavigationBarItem(icon: const Icon(Icons.account_balance_wallet), label: t('budget')), 
+          BottomNavigationBarItem(icon: const Icon(Icons.currency_exchange), label: t('converter')), 
+          BottomNavigationBarItem(icon: const Icon(Icons.local_shipping), label: t('shipping')) 
+        ],
+      ),
+    );
+  }
+}
